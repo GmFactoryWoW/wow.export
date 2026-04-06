@@ -311,7 +311,7 @@ class WMOLegacyRendererGL {
 
 					// legacy M2 uses MD20 magic directly
 					if (magic === 0x3032444D) { // 'MD20'
-						renderer = new M2LegacyRendererGL(data, this.ctx, false, false);
+						renderer = new M2LegacyRendererGL(data, this.ctx, false, false, doodadName);
 						await renderer.load();
 						this.m2_renderers.set(doodadName, renderer);
 					}
