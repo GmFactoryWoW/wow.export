@@ -5,6 +5,8 @@
 */
 
 const Texture = require('../Texture');
+const core = require('../../core');
+const BufferWrapper = require('../../buffer');
 
 const MAGIC_MD20 = 0x3032444D; // 'MD20'
 
@@ -26,8 +28,9 @@ class M2Track {
 }
 
 class M2LegacyLoader {
-	constructor(data) {
+	constructor(data, fileName = null) {
 		this.data = data;
+		this.fileName = fileName;
 		this.isLoaded = false;
 	}
 
@@ -74,8 +77,10 @@ class M2LegacyLoader {
 		// views (skins) - inline for pre-wotlk
 		if (this.version < M2_VER_WOTLK)
 			this._parse_views_inline(ofs);
-		else
+		else {
 			this.viewCount = data.readUInt32LE();
+			this.skins = new Array(this.viewCount);
+		}
 
 		this._parse_colors(ofs);
 		this._parse_textures(ofs);
@@ -822,12 +827,135 @@ class M2LegacyLoader {
 			return this.skins[index];
 		}
 
-		// wotlk: would need external skin loading (not implemented for legacy)
-		throw new Error('External skin loading not implemented for legacy WotLK M2');
+		// wotlk: load external .skin file lazily
+		if (index < 0 || index >= this.viewCount)
+			throw new Error('Invalid skin index: ' + index);
+
+		const cachedSkin = this.skins[index];
+		if (cachedSkin && cachedSkin.isLoaded === true)
+			return cachedSkin;
+
+		const mpq = core.view.mpq;
+		if (!mpq)
+			throw new Error('Unable to load legacy skin: MPQ not initialized');
+
+		const skinFileName = this._resolve_skin_file_name(index);
+		if (!skinFileName)
+			throw new Error('Unable to determine legacy skin file path for index ' + index);
+
+		const rawSkinData = mpq.getFile(skinFileName);
+		if (!rawSkinData)
+			throw new Error('Legacy skin not found in MPQ: ' + skinFileName);
+
+		const skinData = new BufferWrapper(Buffer.from(rawSkinData));
+		const skin = this._parse_external_skin(skinData);
+		skin.fileName = skinFileName;
+		skin.isLoaded = true;
+
+		this.skins[index] = skin;
+		return skin;
 	}
 
 	getSkinList() {
 		return this.skins;
+	}
+
+	_resolve_skin_file_name(index) {
+		if (!this.fileName)
+			return null;
+
+		const basePath = this.fileName.replace(/\.m2$/i, '');
+		const indexPadded = index.toString().padStart(2, '0');
+
+		const candidates = [
+			basePath + indexPadded + '.skin',
+			basePath + index + '.skin'
+		];
+
+		if (index === 0)
+			candidates.push(basePath + '.skin');
+
+		const mpq = core.view.mpq;
+		for (const candidate of candidates) {
+			if (mpq.getFile(candidate))
+				return candidate;
+		}
+
+		return candidates[0];
+	}
+
+	_parse_external_skin(data) {
+		const magic = data.readUInt32LE();
+		if (magic !== 0x4E494B53)
+			throw new Error('Invalid legacy SKIN magic: 0x' + magic.toString(16));
+
+		const indicesCount = data.readUInt32LE();
+		const indicesOfs = data.readUInt32LE();
+		const trianglesCount = data.readUInt32LE();
+		const trianglesOfs = data.readUInt32LE();
+		const propertiesCount = data.readUInt32LE();
+		const propertiesOfs = data.readUInt32LE();
+		const subMeshesCount = data.readUInt32LE();
+		const subMeshesOfs = data.readUInt32LE();
+		const textureUnitsCount = data.readUInt32LE();
+		const textureUnitsOfs = data.readUInt32LE();
+
+		const skin = {
+			bones: data.readUInt32LE()
+		};
+
+		data.seek(indicesOfs);
+		skin.indices = data.readUInt16LE(indicesCount);
+
+		data.seek(trianglesOfs);
+		skin.triangles = data.readUInt16LE(trianglesCount);
+
+		data.seek(propertiesOfs);
+		skin.properties = data.readUInt8(propertiesCount);
+
+		data.seek(subMeshesOfs);
+		skin.subMeshes = new Array(subMeshesCount);
+		for (let i = 0; i < subMeshesCount; i++) {
+			skin.subMeshes[i] = {
+				submeshID: data.readUInt16LE(),
+				level: data.readUInt16LE(),
+				vertexStart: data.readUInt16LE(),
+				vertexCount: data.readUInt16LE(),
+				triangleStart: data.readUInt16LE(),
+				triangleCount: data.readUInt16LE(),
+				boneCount: data.readUInt16LE(),
+				boneStart: data.readUInt16LE(),
+				boneInfluences: data.readUInt16LE(),
+				centerBoneIndex: data.readUInt16LE(),
+				centerPosition: data.readFloatLE(3),
+				sortCenterPosition: data.readFloatLE(3),
+				sortRadius: data.readFloatLE()
+			};
+
+			skin.subMeshes[i].triangleStart += skin.subMeshes[i].level << 16;
+		}
+
+		data.seek(textureUnitsOfs);
+		skin.textureUnits = new Array(textureUnitsCount);
+		for (let i = 0; i < textureUnitsCount; i++) {
+			skin.textureUnits[i] = {
+				flags: data.readUInt8(),
+				priority: data.readUInt8(),
+				shaderID: data.readUInt16LE(),
+				skinSectionIndex: data.readUInt16LE(),
+				flags2: data.readUInt16LE(),
+				colorIndex: data.readUInt16LE(),
+				materialIndex: data.readUInt16LE(),
+				materialLayer: data.readUInt16LE(),
+				textureCount: data.readUInt16LE(),
+				textureComboIndex: data.readUInt16LE(),
+				textureCoordComboIndex: data.readUInt16LE(),
+				textureWeightComboIndex: data.readUInt16LE(),
+				textureTransformComboIndex: data.readUInt16LE()
+			};
+		}
+
+		return skin;
 	}
 }
 

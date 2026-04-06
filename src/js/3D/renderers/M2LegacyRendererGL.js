@@ -138,12 +138,13 @@ function quat_slerp(out, ax, ay, az, aw, bx, by, bz, bw, t) {
 }
 
 class M2LegacyRendererGL {
-	constructor(data, gl_context, reactive = false, useRibbon = true) {
+	constructor(data, gl_context, reactive = false, useRibbon = true, fileName = null) {
 		this.data = data;
 		this.ctx = gl_context;
 		this.gl = gl_context.gl;
 		this.reactive = reactive;
 		this.useRibbon = useRibbon;
+		this.fileName = fileName;
 
 		this.m2 = null;
 		this.syncID = -1;
@@ -181,7 +182,7 @@ class M2LegacyRendererGL {
 	}
 
 	async load() {
-		this.m2 = new M2LegacyLoader(this.data);
+		this.m2 = new M2LegacyLoader(this.data, this.fileName);
 		await this.m2.load();
 
 		this.shader = M2LegacyRendererGL.load_shaders(this.ctx);

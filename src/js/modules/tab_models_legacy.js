@@ -80,7 +80,7 @@ const preview_model = async (core, file_name) => {
 		} else if (magic === MAGIC_MD20) {
 			// legacy m2 format (no MD21 wrapper)
 			core.view.legacyModelViewerActiveType = 'm2';
-			active_renderer = new M2LegacyRendererGL(data, gl_context, true, core.view.config.modelViewerShowTextures);
+			active_renderer = new M2LegacyRendererGL(data, gl_context, true, core.view.config.modelViewerShowTextures, file_name);
 		} else if (file_name_lower.endsWith('.wmo')) {
 			core.view.legacyModelViewerActiveType = 'wmo';
 			active_renderer = new WMOLegacyRendererGL(data, file_name, gl_context, core.view.config.modelViewerShowTextures);
